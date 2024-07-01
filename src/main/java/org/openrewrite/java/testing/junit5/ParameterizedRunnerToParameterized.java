@@ -15,15 +15,36 @@
  */
 package org.openrewrite.java.testing.junit5;
 
-import org.openrewrite.*;
+import org.openrewrite.Cursor;
+import org.openrewrite.ExecutionContext;
+import org.openrewrite.Preconditions;
+import org.openrewrite.Recipe;
+import org.openrewrite.TreeVisitor;
 import org.openrewrite.internal.ListUtils;
 import org.openrewrite.internal.lang.Nullable;
-import org.openrewrite.java.*;
+import org.openrewrite.java.AnnotationMatcher;
+import org.openrewrite.java.JavaIsoVisitor;
+import org.openrewrite.java.JavaParser;
+import org.openrewrite.java.JavaTemplate;
+import org.openrewrite.java.RemoveAnnotationVisitor;
 import org.openrewrite.java.search.UsesType;
-import org.openrewrite.java.tree.*;
+import org.openrewrite.java.tree.Comment;
+import org.openrewrite.java.tree.Expression;
+import org.openrewrite.java.tree.J;
+import org.openrewrite.java.tree.JavaCoordinates;
+import org.openrewrite.java.tree.JavaSourceFile;
+import org.openrewrite.java.tree.JavaType;
+import org.openrewrite.java.tree.Space;
+import org.openrewrite.java.tree.Statement;
 import org.openrewrite.marker.Markers;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
@@ -58,6 +79,27 @@ public class ParameterizedRunnerToParameterized extends Recipe {
     }
 
     private static class ParameterizedRunnerVisitor extends JavaIsoVisitor<ExecutionContext> {
+
+        @Override
+        public J preVisit(J tree, ExecutionContext ctx) {
+            if (tree instanceof JavaSourceFile) {
+                doAfterVisit(new RemoveAnnotationVisitor(PARAMETERS));
+                doAfterVisit(new RemoveAnnotationVisitor(PARAMETER));
+                doAfterVisit(new RemoveAnnotationVisitor(RUN_WITH_PARAMETERS));
+
+                maybeRemoveImport("org.junit.Test");
+                maybeRemoveImport("org.junit.runner.RunWith");
+                maybeRemoveImport("org.junit.runners.Parameterized");
+                maybeRemoveImport("org.junit.runners.Parameterized.Parameters");
+                maybeRemoveImport("org.junit.runners.Parameterized.Parameter");
+                maybeRemoveImport("org.junit.jupiter.api.Test");
+                maybeAddImport("org.junit.jupiter.params.ParameterizedTest");
+                maybeAddImport("org.junit.jupiter.params.provider.MethodSource");
+            }
+
+            return tree;
+        }
+
         @SuppressWarnings("unchecked")
         @Override
         public J.ClassDeclaration visitClassDeclaration(J.ClassDeclaration classDecl, ExecutionContext ctx) {
@@ -281,7 +323,7 @@ public class ParameterizedRunnerToParameterized extends Recipe {
                     if (statement instanceof J.VariableDeclarations) {
                         J.VariableDeclarations varDecls = (J.VariableDeclarations) statement;
                         if (varDecls.getVariables().stream().anyMatch(it -> fieldNames.contains(it.getSimpleName()))
-                            && (varDecls.hasModifier(J.Modifier.Type.Final))) {
+                                && (varDecls.hasModifier(J.Modifier.Type.Final))) {
                             varDecls = varDecls.withModifiers(ListUtils.map(varDecls.getModifiers(), mod -> mod.getType() == J.Modifier.Type.Final ? null : mod));
                             statement = maybeAutoFormat(statement, varDecls, ctx, new Cursor(getCursor(), finalBody));
                         }

@@ -20,11 +20,13 @@ import org.openrewrite.DocumentExample;
 import org.openrewrite.InMemoryExecutionContext;
 import org.openrewrite.Issue;
 import org.openrewrite.java.JavaParser;
+import org.openrewrite.kotlin.KotlinParser;
 import org.openrewrite.test.RecipeSpec;
 import org.openrewrite.test.RewriteTest;
 import org.openrewrite.test.TypeValidation;
 
 import static org.openrewrite.java.Assertions.java;
+import static org.openrewrite.kotlin.Assertions.kotlin;
 
 class ParameterizedRunnerToParameterizedTest implements RewriteTest {
 
@@ -33,113 +35,101 @@ class ParameterizedRunnerToParameterizedTest implements RewriteTest {
         spec
           .parser(JavaParser.fromJavaVersion()
             .classpathFromResources(new InMemoryExecutionContext(), "junit-4.13", "hamcrest-2.2"))
+          .parser(KotlinParser.builder()
+            .classpathFromResources(new InMemoryExecutionContext(), "junit-4.13", "hamcrest-2.2"))
           .recipe(new ParameterizedRunnerToParameterized());
     }
 
     @Test
     void parametersNameHasParameters() {
+
         //language=java
         rewriteRun(
           spec -> spec.typeValidationOptions(TypeValidation.none()),
-          java(
-            """
-              package abc;
-              public class Vet {
-                  private Integer id;
-                  private String firstName;
-                  private String lastName;
-                  public void setId(Integer id) {
-                      this.id = id;
-                  }
-                  public void setFirstName(String firstName) {
-                      this.firstName = firstName;
-                  }
-                  public void setLastName(String lastName) {
-                      this.lastName = lastName;
-                  }
-              }
-              """
-          ),
-          java(
-            """
-              package abc;
-                            
-              import org.junit.Test;
-              import org.junit.runner.RunWith;
-              import org.junit.runners.*;
-              import org.junit.runners.Parameterized.Parameters;
-                  
-              import java.util.Arrays;
-              import java.util.List;
-                            
-              @RunWith(Parameterized.class)
-              public class VetTests {
-                            
-                  private String firstName;
-                  private String lastName;
-                  private Integer id;
-                            
-                  public VetTests(String firstName, String lastName, Integer id) {
-                      this.firstName = firstName;
-                      this.lastName = lastName;
-                      this.id = id;
-                  }
-                            
-                  @Test
-                  public void testSerialization() {
-                      Vet vet = new Vet();
-                      vet.setFirstName(firstName);
-                      vet.setLastName(lastName);
-                      vet.setId(id);
-                  }
-                            
-                  @Parameters(name="{index}: {0} {1} - {2}")
-                  public static List<Object[]> parameters() {
-                      return Arrays.asList(
-                          new Object[] { "Otis", "TheDog", 124 },
-                          new Object[] { "Garfield", "TheBoss", 126 });
-                  }
-              }
-              """,
-            """
-              package abc;
-                            
-              import org.junit.jupiter.params.ParameterizedTest;
-              import org.junit.jupiter.params.provider.MethodSource;
-                            
-              import java.util.Arrays;
-              import java.util.List;
-                            
-              public class VetTests {
-                            
-                  private String firstName;
-                  private String lastName;
-                  private Integer id;
-                            
-                  public void initVetTests(String firstName, String lastName, Integer id) {
-                      this.firstName = firstName;
-                      this.lastName = lastName;
-                      this.id = id;
-                  }
-                            
-                  @MethodSource("parameters")
-                  @ParameterizedTest(name = "{index}: {0} {1} - {2}")
-                  public void testSerialization(String firstName, String lastName, Integer id) {
-                      initVetTests(firstName, lastName, id);
-                      Vet vet = new Vet();
-                      vet.setFirstName(firstName);
-                      vet.setLastName(lastName);
-                      vet.setId(id);
-                  }
-                            
-                  public static List<Object[]> parameters() {
-                      return Arrays.asList(
-                          new Object[] { "Otis", "TheDog", 124 },
-                          new Object[] { "Garfield", "TheBoss", 126 });
-                  }
-              }
+
+          //language=kotlin
+          kotlin("""
+            package abc
+            class Vet(
+              val id: Int,
+              val firstName: String,
+                val lastName: String
+            )
               """
           )
+         ,   //language=kotlin
+            kotlin(
+              """
+                package abc
+
+                import org.junit.Test
+                import org.junit.runner.RunWith
+                import org.junit.runners.*
+                import org.junit.runners.Parameterized.Parameters
+
+                @RunWith(Parameterized::class)
+                class VetTests {
+
+                    private lateinit var firstName: String
+                    private lateinit var lastName: String
+                    private var id: Int? = null
+
+                    @Test
+                    fun testSerialization() {
+                        val vet = Vet(
+                            firstName = firstName,
+                            lastName = lastName,
+                            id = id
+                        )
+                    }
+
+                    companion object {
+                        @JvmStatic
+                        @Parameters(name = "{index}: {0} {1} - {2}")
+                        fun parameters(): List<Vet> {
+                            return listOf(
+                                Vet("Otis", "TheDog", 124),
+                                Vet("Garfield", "TheBoss", 126)
+                            )
+                        }
+                    }
+                }
+                    
+                """,
+              """
+                package abc;
+
+                import org.junit.jupiter.params.ParameterizedTest
+                import org.junit.jupiter.params.provider.MethodSource
+
+                class VetTests {
+
+                    private lateinit var firstName: String
+                    private lateinit var lastName: String
+                    private var id: Int? = null
+
+                    @MethodSource("parameters")
+                    @ParameterizedTest(name = "{index}: {0} {1} - {2}")
+                    fun testSerialization() {
+                        val vet = Vet(
+                            firstName = firstName,
+                            lastName = lastName,
+                            id = id
+                        );
+                    }
+
+                    companion object {
+                        @JvmStatic
+                        fun parameters(): List<Vet> {
+                            return listOf(
+                                Vet("Otis", "TheDog", 124),
+                                Vet("Garfield", "TheBoss", 126)
+                            )
+                        }
+                    }
+                }
+            """
+            )
         );
     }
 
